@@ -1,0 +1,44 @@
+PUBLICAR NA VERCEL — time lelissons-projects
+==============================================
+
+Este repositório tem DOIS jeitos válidos. Use UM deles (evite misturar).
+
+--------------------------------------------------------------------
+A) Raiz do projeto (recomendado — já configurado)
+--------------------------------------------------------------------
+Na pasta que contém "medidor-ganho" e o arquivo "vercel.json" da raiz:
+
+• Vercel → Add New… → Project → Importe o Git desta pasta.
+• Framework Preset: deixe "Other" (o build vem do vercel.json).
+• Root Directory: deixe em branco / "." (NÃO coloque "medidor-ganho").
+• Team: escolha "lelissons-projects" (https://vercel.com/lelissons-projects).
+
+Build na Vercel:
+  install: npm ci --prefix medidor-ganho
+  build:   npm run build:web --prefix medidor-ganho
+  output:  medidor-ganho/dist
+
+Variáveis (Project → Settings → Environment Variables), opcional:
+  EXPO_PUBLIC_REQUIRE_SUBSCRIPTION = 0   (app aberto; omita ou 0)
+  EXPO_PUBLIC_SKIP_PAYWALL = 1           (só se quiser forçar; em geral não precisa)
+
+CLI (alternativa ao Git):
+  cd medidor-ganho
+  npx vercel login
+  cd ..
+  npx vercel link     → escolha team lelissons-projects e crie o projeto na RAIZ
+  npx vercel --prod --yes
+
+--------------------------------------------------------------------
+B) Só a pasta medidor-ganho como raiz do projeto
+--------------------------------------------------------------------
+No painel Vercel: Settings → General → Root Directory = medidor-ganho
+
+Aí o Vercel usa medidor-ganho/vercel.json (install/build dentro da pasta).
+
+--------------------------------------------------------------------
+Depois do deploy
+--------------------------------------------------------------------
+Abra a URL .vercel.app no celular → Chrome → "Adicionar à tela inicial".
+
+Tokens: nunca commite; use https://vercel.com/account/tokens só no seu PC.

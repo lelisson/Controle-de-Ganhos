@@ -1,0 +1,23 @@
+services:
+  api:
+    build: ./api
+    ports:
+      - "3000:3000"
+    environment:
+      TEST_ACCESS_TOKEN: ${TEST_ACCESS_TOKEN:-motorista-teste}
+      VALID_ACCESS_TOKENS: ${VALID_ACCESS_TOKENS:-}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        EXPO_PUBLIC_API_URL: ""
+        EXPO_PUBLIC_SKIP_PAYWALL: ${EXPO_PUBLIC_SKIP_PAYWALL:-0}
+        EXPO_PUBLIC_SHOW_TEST_HINT: ${EXPO_PUBLIC_SHOW_TEST_HINT:-1}
+        EXPO_PUBLIC_CHECKOUT_URL: ${EXPO_PUBLIC_CHECKOUT_URL:-}
+    ports:
+      - "8080:80"
+    depends_on:
+      - api

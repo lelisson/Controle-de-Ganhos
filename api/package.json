@@ -1,0 +1,9 @@
+{
+  "name": "medidor-ganho-api",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2"
+  }
+}

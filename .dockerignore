@@ -1,0 +1,5 @@
+**/node_modules
+medidor-ganho/dist
+.git
+**/.expo
+api/node_modules
