@@ -14,6 +14,8 @@ export type CorridaInput = {
   kmAteEmbarque?: number;
   /** Minutos até embarcar (opcional). */
   minutosAteEmbarque?: number;
+  /** Custo operacional médio por km (combustível, desgaste, etc.) — desconta sobre km total (viagem + ida). */
+  custoPorKmOperacional?: number;
 };
 
 export type CorridaResultado = {
@@ -23,6 +25,8 @@ export type CorridaResultado = {
   minutosTotal: number;
   reaisPorKmEfetivo: number | null;
   reaisPorHoraEfetivo: number | null;
+  /** Valor da corrida − (km total × custo/km), se custo informado. */
+  lucroLiquido: number | null;
 };
 
 const EPS = 1e-9;
@@ -44,6 +48,17 @@ export function calcularCorrida(input: CorridaInput): CorridaResultado {
   const reaisPorKmEfetivo = kmTotal > EPS ? v / kmTotal : null;
   const reaisPorHoraEfetivo = minutosTotal > EPS ? (v * 60) / minutosTotal : null;
 
+  const custoKm = input.custoPorKmOperacional;
+  let lucroLiquido: number | null = null;
+  if (
+    custoKm != null &&
+    Number.isFinite(custoKm) &&
+    custoKm >= 0 &&
+    kmTotal > EPS
+  ) {
+    lucroLiquido = v - kmTotal * custoKm;
+  }
+
   return {
     reaisPorKmCorrida,
     reaisPorHoraCorrida,
@@ -51,6 +66,7 @@ export function calcularCorrida(input: CorridaInput): CorridaResultado {
     minutosTotal,
     reaisPorKmEfetivo,
     reaisPorHoraEfetivo,
+    lucroLiquido,
   };
 }
 
@@ -83,4 +99,25 @@ export function formatarBRL(n: number | null, casas: number = 2): string {
     minimumFractionDigits: casas,
     maximumFractionDigits: casas,
   });
+}
+
+/** Ex.: 35 min → "0h35m" (estilo resumo de oferta). */
+export function formatarDuracaoCurta(minutos: number): string {
+  if (!Number.isFinite(minutos) || minutos < 0) return '—';
+  const h = Math.floor(minutos / 60);
+  const m = Math.round(minutos % 60);
+  return `${h}h${m}m`;
+}
+
+export function labelSemáforoMeta(v: Veredito): string {
+  switch (v) {
+    case 'ok':
+      return 'Boa para suas metas';
+    case 'atencao':
+      return 'Atenção — avalie bem';
+    case 'ruim':
+      return 'Fraca para suas metas';
+    default:
+      return 'Defina metas de R$/km e/ou R$/h para o semáforo';
+  }
 }

@@ -1,5 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -13,10 +13,14 @@ import {
 import {
   calcularCorrida,
   formatarBRL,
+  formatarDuracaoCurta,
   vereditoCorrida,
   type CorridaInput,
 } from './logic/calculoCorrida';
 import { clearStoredToken } from './lib/subscriptionWeb';
+import { limparHistorico, listarHistorico, registrarHistorico, type HistoricoCorridaItem } from './lib/historicoCorrida';
+import { loadPrefsMotorista, savePrefsMotorista } from './lib/prefsMotorista';
+import OfferCard from './OfferCard';
 
 function parseDecimal(raw: string): number {
   const t = raw.trim().replace(/\s/g, '');
@@ -61,8 +65,36 @@ export default function MedidorScreen({ onLogout }: Props) {
   const [minVazio, setMinVazio] = useState('');
   const [minKmMeta, setMinKmMeta] = useState('');
   const [minHoraMeta, setMinHoraMeta] = useState('');
+  const [custoPorKm, setCustoPorKm] = useState('');
   const [showOpcional, setShowOpcional] = useState(false);
   const [showMetas, setShowMetas] = useState(false);
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
+  const [historico, setHistorico] = useState<HistoricoCorridaItem[]>([]);
+
+  useEffect(() => {
+    let alive = true;
+    void loadPrefsMotorista().then((p) => {
+      if (!alive) return;
+      setCustoPorKm(p.custoPorKm);
+      setMinKmMeta(p.minKmMeta);
+      setMinHoraMeta(p.minHoraMeta);
+      setPrefsLoaded(true);
+    });
+    void listarHistorico().then((h) => {
+      if (alive) setHistorico(h);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!prefsLoaded) return;
+    const t = setTimeout(() => {
+      void savePrefsMotorista({ custoPorKm, minKmMeta, minHoraMeta });
+    }, 500);
+    return () => clearTimeout(t);
+  }, [custoPorKm, minKmMeta, minHoraMeta, prefsLoaded]);
 
   const input: CorridaInput | null = useMemo(() => {
     const v = parseDecimal(valor);
@@ -80,8 +112,12 @@ export default function MedidorScreen({ onLogout }: Props) {
     };
     if (Number.isFinite(kmE) && kmE > 0) out.kmAteEmbarque = kmE;
     if (Number.isFinite(minE) && minE > 0) out.minutosAteEmbarque = minE;
+
+    const ck = parseDecimal(custoPorKm);
+    if (Number.isFinite(ck) && ck >= 0) out.custoPorKmOperacional = ck;
+
     return out;
-  }, [valor, kmCorrida, minCorrida, kmVazio, minVazio]);
+  }, [valor, kmCorrida, minCorrida, kmVazio, minVazio, custoPorKm]);
 
   const resultado = useMemo(() => {
     if (!input) return null;
@@ -99,31 +135,31 @@ export default function MedidorScreen({ onLogout }: Props) {
   }, [minHoraMeta]);
 
   const veredito = useMemo(() => {
-    if (!resultado) return null;
+    if (!resultado) return 'indefinido' as const;
     return vereditoCorrida(resultado, minKm, minHora);
   }, [resultado, minKm, minHora]);
-
-  const banner = useMemo(() => {
-    if (!resultado || (!minKm && !minHora)) return null;
-    switch (veredito) {
-      case 'ok':
-        return { text: 'Dentro da sua meta (km e hora).', color: '#166534', bg: '#bbf7d0' };
-      case 'atencao':
-        return {
-          text: 'Parcial: uma métrica ficou abaixo da meta. Avalie o contexto.',
-          color: '#92400e',
-          bg: '#fde68a',
-        };
-      case 'ruim':
-        return { text: 'Abaixo da meta em km/hora efetivos.', color: '#991b1b', bg: '#fecaca' };
-      default:
-        return null;
-    }
-  }, [resultado, veredito, minKm, minHora]);
 
   const temDeslocamento =
     (parseDecimal(kmVazio) > 0 && Number.isFinite(parseDecimal(kmVazio))) ||
     (parseDecimal(minVazio) > 0 && Number.isFinite(parseDecimal(minVazio)));
+
+  const salvarHistorico = useCallback(async () => {
+    if (!input || !resultado) return;
+    await registrarHistorico({
+      resumoLinha: `${formatarDuracaoCurta(input.minutosCorrida)} · ${input.kmCorrida.toFixed(1)} km`,
+      valorFmt: formatarBRL(input.valorReais),
+      reaisPorKm: formatarBRL(resultado.reaisPorKmCorrida),
+      reaisPorHora: formatarBRL(resultado.reaisPorHoraCorrida),
+      lucroFmt: formatarBRL(resultado.lucroLiquido),
+      semaforo: veredito,
+    });
+    setHistorico(await listarHistorico());
+  }, [input, resultado, veredito]);
+
+  const limparHist = useCallback(async () => {
+    await limparHistorico();
+    setHistorico([]);
+  }, []);
 
   function handleLogout() {
     clearStoredToken();
@@ -151,27 +187,21 @@ export default function MedidorScreen({ onLogout }: Props) {
         </View>
 
         <View style={styles.callout}>
-          <Text style={styles.calloutTitle}>Como usar (estilo oferta Uber / 99)</Text>
+          <Text style={styles.calloutTitle}>Uso rápido (oferta Uber / 99)</Text>
           <Text style={styles.calloutBody}>
-            Olhe a chamada no app, digite aqui o valor, km e minutos que aparecem na tela. O cálculo atualiza na
-            hora. Um site no celular não pode ler a tela do Uber automaticamente; apps como o Gigu costumam ser
-            nativos no Android por isso.
+            Digite o que aparece na chamada. Este app é independente; a ideia de cartão com R$/km, R$/h, lucro e
+            semáforo por meta é comum em ferramentas para motoristas (conceito parecido com o divulgado no site GigU).
+            Não lemos a tela de outros apps — isso exige app Android nativo e permissões especiais.
           </Text>
         </View>
 
-        {resultado ? (
-          <View style={styles.heroRow}>
-            <View style={styles.heroCard}>
-              <Text style={styles.heroLabel}>R$ por km</Text>
-              <Text style={styles.heroValue}>{formatarBRL(resultado.reaisPorKmCorrida)}</Text>
-              <Text style={styles.heroFormula}>valor da corrida ÷ km</Text>
-            </View>
-            <View style={styles.heroCard}>
-              <Text style={styles.heroLabel}>R$ por hora</Text>
-              <Text style={styles.heroValue}>{formatarBRL(resultado.reaisPorHoraCorrida)}</Text>
-              <Text style={styles.heroFormula}>valor ÷ (minutos ÷ 60)</Text>
-            </View>
-          </View>
+        {resultado && input ? (
+          <OfferCard
+            resultado={resultado}
+            veredito={veredito}
+            minutosViagem={input.minutosCorrida}
+            kmViagem={input.kmCorrida}
+          />
         ) : null}
 
         <View style={styles.card}>
@@ -188,6 +218,16 @@ export default function MedidorScreen({ onLogout }: Props) {
             hint="Tempo da viagem na chamada."
             value={minCorrida}
             onChangeText={setMinCorrida}
+          />
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Custo (salvo no aparelho)</Text>
+          <LabeledInput
+            label="Seu custo médio (R$/km)"
+            hint="Combustível, desgaste, etc. Usamos km total (viagem + ida, se informar ida) para estimar lucro."
+            value={custoPorKm}
+            onChangeText={setCustoPorKm}
           />
         </View>
 
@@ -210,12 +250,12 @@ export default function MedidorScreen({ onLogout }: Props) {
         ) : null}
 
         <Pressable onPress={() => setShowMetas((s) => !s)} style={styles.toggleBtn} accessibilityRole="button">
-          <Text style={styles.toggleText}>{showMetas ? '▼ Ocultar' : '▶'} Metas mínimas (opcional)</Text>
+          <Text style={styles.toggleText}>{showMetas ? '▼ Ocultar' : '▶'} Metas mínimas (semáforo)</Text>
         </Pressable>
 
         {showMetas ? (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Suas metas</Text>
+            <Text style={styles.cardTitle}>Suas metas (R$/km e R$/h efetivos)</Text>
             <LabeledInput
               label="Mínimo R$/km efetivo"
               hint="Compara com valor ÷ km total (viagem + ida)."
@@ -229,6 +269,12 @@ export default function MedidorScreen({ onLogout }: Props) {
               onChangeText={setMinHoraMeta}
             />
           </View>
+        ) : null}
+
+        {resultado && input ? (
+          <Pressable style={styles.saveBtn} onPress={salvarHistorico} accessibilityRole="button">
+            <Text style={styles.saveBtnText}>Registrar esta oferta no histórico</Text>
+          </Pressable>
         ) : null}
 
         {resultado && temDeslocamento ? (
@@ -249,12 +295,25 @@ export default function MedidorScreen({ onLogout }: Props) {
         ) : null}
 
         {!resultado ? (
-          <Text style={styles.placeholder}>Preencha valor, km e minutos para ver R$/km e R$/hora.</Text>
+          <Text style={styles.placeholder}>Preencha valor, km e minutos para ver o cartão da oferta.</Text>
         ) : null}
 
-        {banner ? (
-          <View style={[styles.banner, { backgroundColor: banner.bg }]}>
-            <Text style={[styles.bannerText, { color: banner.color }]}>{banner.text}</Text>
+        {historico.length > 0 ? (
+          <View style={styles.card}>
+            <View style={styles.histHeader}>
+              <Text style={styles.cardTitle}>Histórico (neste aparelho)</Text>
+              <Pressable onPress={limparHist} accessibilityRole="button">
+                <Text style={styles.linkMuted}>Limpar</Text>
+              </Pressable>
+            </View>
+            {historico.map((h) => (
+              <View key={h.id} style={styles.histRow}>
+                <Text style={styles.histLinha}>{h.resumoLinha}</Text>
+                <Text style={styles.histSub}>
+                  {h.valorFmt} · {h.reaisPorKm}/km · {h.reaisPorHora}/h · lucro {h.lucroFmt}
+                </Text>
+              </View>
+            ))}
           </View>
         ) : null}
       </ScrollView>
@@ -314,36 +373,6 @@ const styles = StyleSheet.create({
     color: '#bae6fd',
     fontSize: 13,
     lineHeight: 19,
-  },
-  heroRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 16,
-  },
-  heroCard: {
-    flex: 1,
-    backgroundColor: '#0c4a6e',
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#0369a1',
-  },
-  heroLabel: {
-    color: '#bae6fd',
-    fontSize: 13,
-    fontWeight: '600',
-    marginBottom: 6,
-  },
-  heroValue: {
-    color: '#f0f9ff',
-    fontSize: 26,
-    fontWeight: '800',
-    marginBottom: 6,
-  },
-  heroFormula: {
-    color: '#7dd3fc',
-    fontSize: 11,
-    opacity: 0.95,
   },
   toggleBtn: {
     paddingVertical: 12,
@@ -419,14 +448,42 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     textAlign: 'center',
   },
-  banner: {
+  saveBtn: {
+    backgroundColor: '#0369a1',
+    paddingVertical: 14,
     borderRadius: 12,
-    padding: 14,
-    marginTop: 4,
+    alignItems: 'center',
+    marginBottom: 14,
   },
-  bannerText: {
+  saveBtnText: {
+    color: '#f0f9ff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  histHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  linkMuted: {
+    color: '#94a3b8',
     fontSize: 14,
     fontWeight: '600',
-    textAlign: 'center',
+  },
+  histRow: {
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#334155',
+  },
+  histLinha: {
+    color: '#e2e8f0',
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  histSub: {
+    color: '#94a3b8',
+    fontSize: 12,
   },
 });
