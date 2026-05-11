@@ -38,12 +38,14 @@ git commit -m "Medidor de ganho: PWA Expo + config Vercel"
 
 ## 3) Conectar ao GitHub e enviar o código
 
-Substitua `SEU_USUARIO` e `NOME_DO_REPO`:
+Repositório deste projeto: [github.com/lelisson/Controle-de-Ganhos](https://github.com/lelisson/Controle-de-Ganhos).
 
 ```powershell
-git remote add origin https://github.com/SEU_USUARIO/NOME_DO_REPO.git
+git remote add origin https://github.com/lelisson/Controle-de-Ganhos.git
 git push -u origin main
 ```
+
+(Se `origin` já existir: `git remote set-url origin https://github.com/lelisson/Controle-de-Ganhos.git`.)
 
 Se pedir login, use **Personal Access Token** (GitHub → Settings → Developer settings → Personal access tokens), não a senha antiga.
 
